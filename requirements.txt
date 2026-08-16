@@ -1,0 +1,16 @@
+# NOTE: This lists every package actually imported by evaluate.py and
+# training/train_scunet.ipynb. It is NOT a literal `pip freeze` dump --
+# KLA's requirements table asks for the complete pip freeze output from your
+# actual training environment for full reproducibility. Before final
+# submission, regenerate this file inside your training virtual environment:
+#
+#     pip freeze > requirements.txt
+#
+# and replace this file with that output.
+
+torch>=2.1
+numpy>=1.24
+matplotlib>=3.7
+einops>=0.7
+timm>=0.9
+thop>=0.1.1
