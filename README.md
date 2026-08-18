@@ -28,7 +28,7 @@ python run.py <input-dir> <output-dir>
 Example:
 
 ```bash
-python run.py <input> <output>
+python run.py --input_dir ./input --output_dir ./output
 ```
 
 No internet access, API keys, extra downloads, or manual configuration are
