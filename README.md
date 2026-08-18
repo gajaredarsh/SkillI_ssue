@@ -22,12 +22,6 @@ fitting.
 git clone "https://github.com/gajaredarsh/SkillI_ssue"
 cd SkillI_ssue
 pip install -r requirements.txt
-python run.py <input-dir> <output-dir>
-```
-
-Example:
-
-```bash
 python run.py --input_dir ./input --output_dir ./output
 ```
 
