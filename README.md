@@ -1,15 +1,15 @@
 # KLA PS01 — Joint Denoising and 2× Super-Resolution
 
-**Team:** `<TEAM_NAME>`
+**Team:** `SkillI_ssue`
 
 Restores grayscale `.npy` images degraded by combined multiplicative
 speckle, additive Gaussian noise, and 2× downsampling.
 
 | Metric | Bicubic baseline | Ours |
 |---|---|---|
-| PSNR (dB) | 22.99 | **29.20** |
-| SSIM | 0.559 | **0.804** |
-| LPIPS ↓ | 0.425 | *see report* |
+| PSNR (dB) | 22.99 | **29.27** |
+| SSIM | 0.559 | **0.8072** |
+| LPIPS ↓ | 0.425 | **0.2244** |
 
 Measured on 200 held-out training pairs (indices 0–199), never used for
 fitting.
@@ -19,8 +19,8 @@ fitting.
 ## Quick start
 
 ```bash
-git clone <REPO_URL>
-cd <REPO_NAME>
+git clone "https://github.com/gajaredarsh/SkillI_ssue"
+cd SkillI_ssue
 pip install -r requirements.txt
 python run.py <input-dir> <output-dir>
 ```
