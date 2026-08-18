@@ -1,88 +1,150 @@
-# SCUNet Fine-tuned Image Restoration
+# KLA PS01 — Joint Denoising and 2× Super-Resolution
 
-Fine-tuned [SCUNet](https://github.com/cszn/SCUNet) (Swin-Conv-UNet) blind-denoising model,
-adapted from the pretrained `scunet_color_real_psnr` checkpoint to restore images degraded
-by a combination of Gaussian noise, speckle noise, and downscale/upscale blur.
+**Team:** `<TEAM_NAME>`
 
-## Repository contents
+Restores grayscale `.npy` images degraded by combined multiplicative
+speckle, additive Gaussian noise, and 2× downsampling.
 
-| Path | Description |
-|---|---|
-| `README.md` | This file. |
-| `evaluate.py` | Standalone evaluation/inference script (see below). |
-| `training/train_scunet.ipynb` | Notebook reproducing the full training process from scratch. |
-| `weights/scunet_finetuned.pth` | Final trained model checkpoint. |
-| `outputs/` | Restored images produced by `evaluate.py` on the test set. |
-| `models/network_scunet.py` | Vendored SCUNet architecture (see "Architecture source" below). |
-| `requirements.txt` | Python package requirements. |
+| Metric | Bicubic baseline | Ours |
+|---|---|---|
+| PSNR (dB) | 22.99 | **29.20** |
+| SSIM | 0.559 | **0.804** |
+| LPIPS ↓ | 0.425 | *see report* |
 
-## Setup
+Measured on 200 held-out training pairs (indices 0–199), never used for
+fitting.
+
+---
+
+## Quick start
 
 ```bash
-git clone <this-repo-url>
-cd <this-repo>
-python -m venv venv && source venv/bin/activate   # optional but recommended
+git clone <REPO_URL>
+cd <REPO_NAME>
+pip install -r requirements.txt
+python run.py <input-dir> <output-dir>
+```
+
+Example:
+
+```bash
+python run.py /data/Test_NoisyLR /data/restored
+```
+
+No internet access, API keys, extra downloads, or manual configuration are
+required at run time. The model weights are included in `models/`.
+
+---
+
+## Repository layout
+
+```
+.
+├── run.py                       # inference entry point (the benchmarked script)
+├── requirements.txt             # pip freeze from the training environment
+├── README.md
+├── models/
+│   ├── __init__.py
+│   ├── network_scunet.py        # SCUNet architecture (cszn/SCUNet)
+│   └── scunet_finetuned_multidegradation.pth   # final weights, 17.95M params
+├── training/
+│   └── train_scunet.ipynb       # reproduces training from scratch
+└── restored_test_outputs/       # model outputs on the provided test set (400 .npy)
+```
+
+---
+
+## Method
+
+**Backbone.** SCUNet (Swin-Conv-UNet), pretrained by Zhang et al. Chosen
+because its training-data synthesis explicitly models **speckle as
+multiplicative noise** — the dominant degradation in this task — unlike
+denoisers that assume additive Gaussian noise only. Its swin-transformer
+branch provides non-local modelling, the learned analogue of the
+self-similarity prior that BM3D exploits.
+
+**Fine-tuning.** The pretrained denoiser was fine-tuned end-to-end on the
+provided paired data with a combined objective:
+
+```
+L = 1.0·L1 + 0.3·(1 − SSIM) + 0.35·Sobel + 0.15·Laplacian + 0.2·contrast
+```
+
+The Sobel and Laplacian terms target edge and fine-texture fidelity; the
+contrast term penalises the dulling that a pure L1 objective produces. A
+plain L1 objective converges to the posterior mean, which is provably
+smooth wherever the degraded input does not determine high-frequency phase
+— visible as washed-out texture. These terms counteract that directly.
+
+**Inference pipeline.** Bicubic upsample ×2 → reflect-pad to a multiple of
+64 → SCUNet → crop → average channels → clip to [0, 1].
+
+---
+
+## Design notes
+
+**No input normalisation.** The model is fine-tuned on the raw native value
+scale of the `.npy` files. The degraded inputs are *not* bounded to [0, 1]
+— multiplicative speckle pushes bright pixels above 1, and the additive
+component pushes dark pixels slightly below 0 — while the ground truth is
+per-image max-normalised to [0, 1]. An earlier version applied a per-image
+1st/99th-percentile contrast stretch; removing it improved PSNR by roughly
+4 dB, because the stretch placed inputs outside the training distribution.
+
+**Channel handling.** SCUNet's colour model expects 3 input channels, so
+the single grayscale plane is replicated on input and the 3 output channels
+are **averaged** on output. ITU-R luminance weights would be inappropriate
+here — the channels are copies of one plane, not true RGB.
+
+**Resolution.** The model is fully convolutional, so any input resolution
+is accepted at a fixed 2× scale. The provided test set is 400 images at
+128×128 → 256×256. A 256×256 input yields 512×512 unchanged.
+
+---
+
+## Command-line reference
+
+```
+python run.py <input-dir> <output-dir> [options]
+```
+
+| Argument       | Default                                              | Description                                       |
+|----------------|------------------------------------------------------|---------------------------------------------------|
+| `input-dir`    | *(required)*                                         | Directory of input `.npy` files                   |
+| `output-dir`   | *(required)*                                         | Output directory, created if missing              |
+| `--weights`    | `models/scunet_finetuned_multidegradation.pth`       | Path to the checkpoint                            |
+| `--scale`      | `2`                                                  | Input→output upsampling factor                    |
+| `--no_clip`    | off                                                  | Skip clipping the output to [0, 1]                |
+
+### Output guarantees
+
+- one `.npy` per input, **same filename**
+- shape `(H·2, W·2)`, dtype `float32`
+- values within `[0, 1]`, no NaN or Inf
+- a file that fails is logged to stderr and skipped, so one bad input
+  cannot abort the batch
+
+---
+
+## Reproducing training
+
+```bash
+jupyter notebook training/train_scunet.ipynb
+```
+
+Expects the dataset at `train/NoisyLR`, `train/GT`, and `NoisyLR` (test).
+The notebook downloads the SCUNet pretrained weights, fine-tunes for 20
+epochs, and writes `scunet_finetuned_multidegradation.pth`.
+
+Hardware used: single NVIDIA T4. Runtime: approximately 1 hour.
+
+---
+
+## Environment
+
+```bash
 pip install -r requirements.txt
 ```
 
-Requires Python 3.10+ and a CUDA-capable GPU for reasonable inference speed (CPU also
-works, just slower).
-
-## Running inference (evaluation script)
-
-```bash
-python evaluate.py --input_dir /path/to/test/NoisyLR --output_dir /path/to/output_dir
-```
-
-This loads `weights/scunet_finetuned.pth`, runs restoration on every `.npy` file in
-`--input_dir`, and writes the restored `.npy` image (same filename) to `--output_dir`.
-No manual edits are required -- both paths are supplied entirely via command-line
-arguments.
-
-**Optional flags:**
-
-| Flag | Default | Purpose |
-|---|---|---|
-| `--weights` | `weights/scunet_finetuned.pth` | Path to the trained checkpoint. |
-| `--upsample_scale` | `1` | Set to the LR:GT resolution ratio used during training (e.g. `2`) if your test noisy images are lower resolution than the ground truth the model was trained against. Leave at `1` if noisy/GT were the same resolution. |
-| `--device` | `cuda` if available, else `cpu` | Inference device. |
-
-## Reproducing training from scratch
-
-Open `training/train_scunet.ipynb` (Jupyter locally, or upload to Kaggle -- the
-notebook's markdown includes Kaggle-specific setup notes) and run all cells top to
-bottom. It expects a dataset with this layout:
-
-```
-train/NoisyLR/   noisy training images (.npy)
-train/GT/        matching ground-truth images (.npy), same filenames
-NoisyLR/         test set: noisy images only (.npy)
-```
-
-Update the dataset paths in the notebook's `CFG` class if your data lives elsewhere.
-Training fine-tunes the pretrained SCUNet checkpoint (auto-downloaded from KAIR's
-GitHub release on first run) using a combined L1 + SSIM + Sobel/Laplacian-sharpening +
-contrast loss, and saves the best checkpoint (by validation PSNR) to disk.
-
-## Architecture source
-
-`evaluate.py` and the training notebook both need the `SCUNet` class definition.
-**`models/network_scunet.py` is vendored directly in this repo** (from the official
-[cszn/SCUNet](https://github.com/cszn/SCUNet)), so evaluation runs fully offline --
-no network access needed on the benchmarking machine. `evaluate.py` only falls back
-to cloning the repo at runtime if this file is ever removed.
-
-## Model weights
-
-`weights/scunet_finetuned.pth` must be present for `evaluate.py` to run. If the file
-is large, use Git LFS (`git lfs track "weights/*.pth"`) or host it externally and
-document the download command here.
-
-## Notes
-
-- Pretrained base weights (`scunet_color_real_psnr.pth`) are downloaded automatically
-  during training from `https://github.com/cszn/KAIR/releases/download/v1.0/` --
-  training requires internet access on first run.
-- `requirements.txt` lists the packages actually imported by this repo's code. Before
-  final submission, consider regenerating it via `pip freeze > requirements.txt`
-  inside your actual training environment for exact reproducibility.
+Requires a CUDA-enabled PyTorch build. `run.py` falls back to CPU
+automatically, but CPU inference is roughly 60× slower.

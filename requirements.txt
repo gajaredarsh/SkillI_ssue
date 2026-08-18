@@ -1,0 +1,16 @@
+# Dependencies for run.py (inference) and the fine-tuning notebook.
+#
+# NOTE: KLA's requirements table asks for the full pip freeze from the actual
+# training environment. Regenerate inside that venv before final submission:
+#     pip freeze > requirements.txt
+
+torch>=2.1
+numpy>=1.24
+einops>=0.7
+timm>=0.9
+thop>=0.1.1
+
+# training / evaluation only (not needed for run.py inference)
+matplotlib>=3.7
+scikit-image>=0.22
+lpips>=0.1.4
